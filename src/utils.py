@@ -19,6 +19,9 @@ import pickle
 import math
 from torch.optim.adam import Adam
 
+from numpy import genfromtxt # @dv
+from math import isnan # @dv
+
 # data generating functions
 
 def simulate_random_dag(d: int,
@@ -400,27 +403,57 @@ def load_data_discrete(args, batch_size=1000, suffix='', debug = False):
 
     return train_data_loader, valid_data_loader, test_data_loader, G, max_X_card, X
 
+# @dv
+def clean_and_normalize(data):
+    rows, cols = data.shape
+    ## remove non-nan values
+    idx=0
+    for j in range(cols):
+        clmn = data[:,j]
+        temp_idx = np.where(clmn==next(filter(lambda x: not isnan(x), clmn)))[0]
+        if temp_idx > idx:
+            idx = temp_idx
+    data = data[int(idx):rows,:]
+    ## normalize 
+    for j in range(cols):
+        # data[:,j]=(data[:,j]-np.mean(data[:,j]))/np.std(data[:,j])
+        data[:,j]=(data[:,j]-np.min(data[:,j]))/(np.max(data[:,j])-np.min(data[:,j]))
+    return data
+
 def load_data(args, batch_size=1000, suffix='', debug = False):
+    # ## -- @dv: author's code block below--
     #  # configurations
-    n, d = args.data_sample_size, args.data_variable_size
-    graph_type, degree, sem_type, linear_type = args.graph_type, args.graph_degree, args.graph_sem_type, args.graph_linear_type
-    x_dims = args.x_dims
+    # n, d = args.data_sample_size, args.data_variable_size
+    # graph_type, degree, sem_type, linear_type = args.graph_type, args.graph_degree, args.graph_sem_type, args.graph_linear_type
+    # x_dims = args.x_dims
 
-    if args.data_type == 'synthetic':
-        # generate data
-        G = simulate_random_dag(d, degree, graph_type)
-        X = simulate_sem(G, n, x_dims, sem_type, linear_type)
+    # if args.data_type == 'synthetic':
+    #     # generate data
+    #     G = simulate_random_dag(d, degree, graph_type)
+    #     X = simulate_sem(G, n, x_dims, sem_type, linear_type)
 
-    elif args.data_type == 'discrete':
-        # get benchmark discrete data
-        if args.data_filename.endswith('.pkl'):
-            with open(os.path.join(args.data_dir, args.data_filename), 'rb') as handle:
-                X = pickle.load(handle)
-        else:
-            all_data, graph = read_BNrep(args)
-            G = nx.DiGraph(graph)
-            X = all_data['1000']['1']
+    # elif args.data_type == 'discrete':
+    #     # get benchmark discrete data
+    #     if args.data_filename.endswith('.pkl'):
+    #         with open(os.path.join(args.data_dir, args.data_filename), 'rb') as handle:
+    #             X = pickle.load(handle)
+    #     else:
+    #         all_data, graph = read_BNrep(args)
+    #         G = nx.DiGraph(graph)
+    #         X = all_data['1000']['1']
+    # ## -- @dv: author's code block above--
 
+    ## @dv
+    data = genfromtxt('../data/'+str(args.filename)+'.csv',delimiter=',')
+    if args.filename == 'combined':
+        data = np.delete(data,-3,1) # remove the third last column due to nan values
+    X = clean_and_normalize(data)
+    X = np.expand_dims(X,axis=2) # expand dimension to incorporate for x_dim variable = 1
+    d = X.shape[1]
+    print(':::: @dv: shape of dataset = ' + str(X.shape) + '::::')
+    graph_type, degree = args.graph_type, args.graph_degree
+    G = simulate_random_dag(d, degree, graph_type)
+    ## @dv
 
     feat_train = torch.FloatTensor(X)
     feat_valid = torch.FloatTensor(X)
@@ -435,7 +468,8 @@ def load_data(args, batch_size=1000, suffix='', debug = False):
     valid_data_loader = DataLoader(valid_data, batch_size=batch_size)
     test_data_loader = DataLoader(test_data, batch_size=batch_size)
 
-    return train_data_loader, valid_data_loader, test_data_loader, G
+    # @dv: return argument 'd' added below
+    return train_data_loader, valid_data_loader, test_data_loader, G, d
 
 
 def to_2d_idx(idx, num_cols):

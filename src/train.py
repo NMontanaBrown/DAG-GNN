@@ -36,11 +36,11 @@ parser.add_argument('--data_dir', type=str, default= 'data/',
                     help='data file name containing the discrete files.')
 parser.add_argument('--data_sample_size', type=int, default=5000,
                     help='the number of samples of data')
-parser.add_argument('--data_variable_size', type=int, default=10,
+parser.add_argument('--data_variable_size', type=int, default=100,
                     help='the number of variables in synthetic generated data')
 parser.add_argument('--graph_type', type=str, default='erdos-renyi',
                     help='the type of DAG graph by generation method')
-parser.add_argument('--graph_degree', type=int, default=2,
+parser.add_argument('--graph_degree', type=int, default=3,
                     help='the number of degree in generated DAG graph')
 parser.add_argument('--graph_sem_type', type=str, default='linear-gauss',
                     help='the structure equation model (SEM) parameter type')
@@ -70,10 +70,10 @@ parser.add_argument('--use_A_positiver_loss', type = int, default = 0,
                     help = 'flag to enforce A must have positive values')
 
 
-parser.add_argument('--no-cuda', action='store_true', default=True,
+parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Disables CUDA training.')
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
-parser.add_argument('--epochs', type=int, default= 300,
+parser.add_argument('--epochs', type=int, default= 200,
                     help='Number of epochs to train.')
 parser.add_argument('--batch-size', type=int, default = 100, # note: should be divisible by sample size, otherwise throw an error
                     help='Number of samples per batch.')
@@ -100,8 +100,10 @@ parser.add_argument('--encoder-dropout', type=float, default=0.0,
                     help='Dropout rate (1 - keep probability).')
 parser.add_argument('--decoder-dropout', type=float, default=0.0,
                     help='Dropout rate (1 - keep probability).')
-parser.add_argument('--save-folder', type=str, default='logs',
+parser.add_argument('--save-folder', type=str, default='logs', # @dv: argument not used anymore
                     help='Where to save the trained model, leave empty to not save anything.')
+parser.add_argument('--filename', type=str, default='no-file-provided', # argument added by @dv
+                    help='Which file (.csv) to process')
 parser.add_argument('--load-folder', type=str, default='',
                     help='Where to load the trained model if finetunning. ' +
                          'Leave empty to train from scratch')
@@ -125,6 +127,8 @@ parser.add_argument('--prior', action='store_true', default=False,
                     help='Whether to use sparsity prior.')
 parser.add_argument('--dynamic-graph', action='store_true', default=False,
                     help='Whether test with dynamically re-computed graph.')
+parser.add_argument('--sea-ice', type=bool, default=True,
+		    help = 'to include the sea ice variables or not') # @dv
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -139,32 +143,34 @@ if args.cuda:
 if args.dynamic_graph:
     print("Testing with dynamically re-computed graph.")
 
+# "save_folder" replaced by "log_folder" below @dv
 # Save model and meta-data. Always saves in a new sub-folder.
-if args.save_folder:
+if args.filename:
     exp_counter = 0
     now = datetime.datetime.now()
     timestamp = now.isoformat()
-    save_folder = '{}/exp{}/'.format(args.save_folder, timestamp)
+    # @dv: __epochs{}, .format(args.epochs) added below
+    log_folder = '{}__epochs{}/exp{}/'.format(args.filename, args.epochs, timestamp)
     # safe_name = save_folder.text.replace('/', '_')
-    os.makedirs(save_folder)
-    meta_file = os.path.join(save_folder, 'metadata.pkl')
-    encoder_file = os.path.join(save_folder, 'encoder.pt')
-    decoder_file = os.path.join(save_folder, 'decoder.pt')
+    os.makedirs(log_folder)
+    meta_file = os.path.join(log_folder, 'metadata.pkl')
+    encoder_file = os.path.join(log_folder, 'encoder.pt')
+    decoder_file = os.path.join(log_folder, 'decoder.pt')
 
-    log_file = os.path.join(save_folder, 'log.txt')
+    log_file = os.path.join(log_folder, 'log.txt')
     log = open(log_file, 'w')
 
     pickle.dump({'args': args}, open(meta_file, "wb"))
 else:
-    print("WARNING: No save_folder provided!" +
+    print("WARNING: No filename provided!" +
           "Testing (within this script) will throw an error.")
 
 
 # ================================================
 # get data: experiments = {synthetic SEM, ALARM}
 # ================================================
-train_loader, valid_loader, test_loader, ground_truth_G = load_data( args, args.batch_size, args.suffix)
-
+train_loader, valid_loader, test_loader, ground_truth_G, d = load_data( args, args.batch_size, args.suffix)
+args.data_variable_size = d # @dv: added this line, and the 'd' above
 #===================================
 # load modules
 #===================================
@@ -213,7 +219,7 @@ if args.load_folder:
     decoder_file = os.path.join(args.load_folder, 'decoder.pt')
     decoder.load_state_dict(torch.load(decoder_file))
 
-    args.save_folder = False
+    args.filename = False
 
 #===================================
 # set up training parameters
@@ -303,7 +309,7 @@ def train(epoch, best_val_loss, ground_truth_G, lambda_A, c_A, optimizer):
 
     encoder.train()
     decoder.train()
-    scheduler.step()
+    # scheduler.step() # moved after the training call, due to warning @dv
 
 
     # update optimizer
@@ -311,7 +317,6 @@ def train(epoch, best_val_loss, ground_truth_G, lambda_A, c_A, optimizer):
 
 
     for batch_idx, (data, relations) in enumerate(train_loader):
-
         if args.cuda:
             data, relations = data.cuda(), relations.cuda()
         data, relations = Variable(data).double(), Variable(relations).double()
@@ -393,7 +398,7 @@ def train(epoch, best_val_loss, ground_truth_G, lambda_A, c_A, optimizer):
           'mse_train: {:.10f}'.format(np.mean(mse_train)),
           'shd_trian: {:.10f}'.format(np.mean(shd_trian)),
           'time: {:.4f}s'.format(time.time() - t))
-    if args.save_folder and np.mean(nll_val) < best_val_loss:
+    if args.filename and np.mean(nll_val) < best_val_loss:
         torch.save(encoder.state_dict(), encoder_file)
         torch.save(decoder.state_dict(), decoder_file)
         print('Best model so far, saving...')
@@ -437,6 +442,7 @@ try:
         while c_A < 1e+20:
             for epoch in range(args.epochs):
                 ELBO_loss, NLL_loss, MSE_loss, graph, origin_A = train(epoch, best_ELBO_loss, ground_truth_G, lambda_A, c_A, optimizer)
+                scheduler.step()
                 if ELBO_loss < best_ELBO_loss:
                     best_ELBO_loss = ELBO_loss
                     best_epoch = epoch
@@ -474,7 +480,7 @@ try:
             break
 
 
-    if args.save_folder:
+    if args.filename:
         print("Best Epoch: {:04d}".format(best_epoch), file=log)
         log.flush()
 
@@ -483,33 +489,22 @@ try:
     print(nx.to_numpy_array(ground_truth_G))
     fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(best_ELBO_graph))
     print('Best ELBO Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
+    print('Best ELBO Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz, file = log)
 
     print(best_NLL_graph)
     print(nx.to_numpy_array(ground_truth_G))
     fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(best_NLL_graph))
     print('Best NLL Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
+    print('Best NLL Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz, file = log)
 
 
     print (best_MSE_graph)
     print(nx.to_numpy_array(ground_truth_G))
     fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(best_MSE_graph))
     print('Best MSE Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
+    print('Best MSE Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz, file = log)
 
-    graph = origin_A.data.clone().numpy()
-    graph[np.abs(graph) < 0.1] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.1, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
-
-    graph[np.abs(graph) < 0.2] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.2, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
-
-    graph[np.abs(graph) < 0.3] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.3, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
+    log.flush()
 
 
 except KeyboardInterrupt:
@@ -529,36 +524,28 @@ except KeyboardInterrupt:
     fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(best_MSE_graph))
     print('Best MSE Graph Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
 
-    graph = origin_A.data.clone().numpy()
-    graph[np.abs(graph) < 0.1] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.1, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
 
-    graph[np.abs(graph) < 0.2] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.2, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
+#save_folder = args.filename + '__epochs' + str(args.epochs) # @dv
+# save_folder = args.filename + '__encoder' + str(args.encoder_hidden) + '__decoder' + str(args.decoder_hidden) + '__z-dims' + str(args.z_dims) # @dv
+save_folder = args.filename + '__tauA' + str(args.tau_A) + '__thresh' + str(args.graph_threshold) # @dv
+os.makedirs(save_folder)
 
-    graph[np.abs(graph) < 0.3] = 0
-    # print(graph)
-    fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
-    print('threshold 0.3, Accuracy: fdr', fdr, ' tpr ', tpr, ' fpr ', fpr, 'shd', shd, 'nnz', nnz)
-
-
-f = open('trueG', 'w')
+f = open(os.path.join(save_folder, 'trueG'), 'w')
 matG = np.matrix(nx.to_numpy_array(ground_truth_G))
 for line in matG:
     np.savetxt(f, line, fmt='%.5f')
 f.closed
 
-f1 = open('predG', 'w')
+
+f1 = open(os.path.join(save_folder, 'predG'), 'w')
 matG1 = np.matrix(origin_A.data.clone().numpy())
 for line in matG1:
     np.savetxt(f1, line, fmt='%.5f')
 f1.closed
 
+print('Arguments = ' + str(args), file = log)
+log.flush()
 
 if log is not None:
-    print(save_folder)
+    print(log_folder)
     log.close()
