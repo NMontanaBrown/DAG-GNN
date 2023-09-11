@@ -445,14 +445,12 @@ def load_data(args, batch_size=1000, suffix='', debug = False):
 
     ## @dv
     data = genfromtxt('../data/'+str(args.filename)+'.csv',delimiter=',')
-    if args.filename == 'combined':
-        data = np.delete(data,-3,1) # remove the third last column due to nan values
-    X = clean_and_normalize(data)
-    X = np.expand_dims(X,axis=2) # expand dimension to incorporate for x_dim variable = 1
+    X = np.expand_dims(data,axis=2) # expand dimension to incorporate for x_dim variable = 1
     d = X.shape[1]
     print(':::: @dv: shape of dataset = ' + str(X.shape) + '::::')
     graph_type, degree = args.graph_type, args.graph_degree
-    G = simulate_random_dag(d, degree, graph_type)
+    A = genfromtxt('../data/'+str(args.filename)+'_adj.csv',delimiter=',')
+    G = nx.from_numpy_matrix(A, create_using = nx.DiGraph())
     ## @dv
 
     feat_train = torch.FloatTensor(X)
@@ -646,16 +644,25 @@ def normalize_adj(adj):
     myr[isnan(myr)] = 0.
     return myr
 
-def preprocess_adj(adj):
-    adj_normalized = (torch.eye(adj.shape[0]).double() + (adj.transpose(0,1)))
+def preprocess_adj(adj, cuda=False):
+    if cuda:
+        adj_normalized = (torch.eye(adj.shape[0]).double().cuda() + (adj.transpose(0,1)))
+    else:
+        adj_normalized = (torch.eye(adj.shape[0]).double() + (adj.transpose(0,1)))
     return adj_normalized
 
-def preprocess_adj_new(adj):
-    adj_normalized = (torch.eye(adj.shape[0]).double() - (adj.transpose(0,1)))
+def preprocess_adj_new(adj, cuda=False):
+    if cuda:
+        adj_normalized = (torch.eye(adj.shape[0]).double().cuda() - (adj.transpose(0,1)))
+    else:
+        adj_normalized = (torch.eye(adj.shape[0]).double() - (adj.transpose(0,1)))
     return adj_normalized
 
-def preprocess_adj_new1(adj):
-    adj_normalized = torch.inverse(torch.eye(adj.shape[0]).double()-adj.transpose(0,1))
+def preprocess_adj_new1(adj, cuda=False):
+    if cuda:
+        adj_normalized = torch.inverse(torch.eye(adj.shape[0]).double().cuda()-adj.transpose(0,1))
+    else:
+        adj_normalized = torch.inverse(torch.eye(adj.shape[0]).double()-adj.transpose(0,1))
     return adj_normalized
 
 def isnan(x):
@@ -688,8 +695,11 @@ def sparse_to_tuple(sparse_mx):
     return sparse_mx
 
 
-def matrix_poly(matrix, d):
-    x = torch.eye(d).double()+ torch.div(matrix, d)
+def matrix_poly(matrix, d, cuda=False):
+    if cuda:
+        x = torch.eye(d).double().cuda()+ torch.div(matrix, d)
+    else:
+        x = torch.eye(d).double() + torch.div(matrix, d)
     return torch.matrix_power(x, d)
 
 

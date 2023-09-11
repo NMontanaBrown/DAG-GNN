@@ -36,7 +36,7 @@ parser.add_argument('--data_dir', type=str, default= 'data/',
                     help='data file name containing the discrete files.')
 parser.add_argument('--data_sample_size', type=int, default=5000,
                     help='the number of samples of data')
-parser.add_argument('--data_variable_size', type=int, default=100,
+parser.add_argument('--data_variable_size', type=int, default=14,
                     help='the number of variables in synthetic generated data')
 parser.add_argument('--graph_type', type=str, default='erdos-renyi',
                     help='the type of DAG graph by generation method')
@@ -70,7 +70,9 @@ parser.add_argument('--use_A_positiver_loss', type = int, default = 0,
                     help = 'flag to enforce A must have positive values')
 
 
-parser.add_argument('--no-cuda', action='store_true', default=False,
+parser.add_argument('--no_cuda', action='store_true', default=False,
+                    help='Disables CUDA training.')
+parser.add_argument('--cuda', action='store_true', default=False,
                     help='Disables CUDA training.')
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')
 parser.add_argument('--epochs', type=int, default= 200,
@@ -131,7 +133,9 @@ parser.add_argument('--sea-ice', type=bool, default=True,
 		    help = 'to include the sea ice variables or not') # @dv
 
 args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
+# args.cuda = not args.no_cuda and torch.cuda.is_available()
+# args.cuda = False
+print(f"###############\nCUDA:{args.cuda}\n###############")
 args.factor = not args.no_factor
 print(args)
 
@@ -374,7 +378,10 @@ def train(epoch, best_val_loss, ground_truth_G, lambda_A, c_A, optimizer):
             print('nan error\n')
 
         # compute metrics
-        graph = origin_A.data.clone().numpy()
+        if args.cuda:
+            graph = origin_A.data.clone().cpu().numpy()
+        else:
+            graph = origin_A.data.clone().numpy()
         graph[np.abs(graph) < args.graph_threshold] = 0
 
         fdr, tpr, fpr, shd, nnz = count_accuracy(ground_truth_G, nx.DiGraph(graph))
@@ -528,7 +535,8 @@ except KeyboardInterrupt:
 #save_folder = args.filename + '__epochs' + str(args.epochs) # @dv
 # save_folder = args.filename + '__encoder' + str(args.encoder_hidden) + '__decoder' + str(args.decoder_hidden) + '__z-dims' + str(args.z_dims) # @dv
 save_folder = args.filename + '__tauA' + str(args.tau_A) + '__thresh' + str(args.graph_threshold) # @dv
-os.makedirs(save_folder)
+if not os.path.exists(save_folder):
+    os.makedirs(save_folder)
 
 f = open(os.path.join(save_folder, 'trueG'), 'w')
 matG = np.matrix(nx.to_numpy_array(ground_truth_G))
