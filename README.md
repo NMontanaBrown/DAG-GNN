@@ -12,8 +12,28 @@ pip install matplotlib pandas numpy seaborn
 ```
 
 ## Running synthetic experiments
+To run the baseline experiments for DAG-GNN on the synthetic experiments, run the following commands from the src directory
 
-WIP
+### Sangiovese Grapes Dataset#
+
+```bash
+python train.py --data_type real --data_filename grapes/grapes_data_clean.csv --data_sample_size 100000 --data_variable_size 14 
+```
+
+### Arctic Sea Ice Dataset
+
+```bash
+python train.py --data_type real --data_filename arctic/arctic_data_clean.csv --data_sample_size 468 --data_variable_size 12
+```
+
+### Alzheimer's Disease Dataset
+
+```bash
+python train.py --data_type real --data_filename alzheimers/alzheimers_data_clean.csv --data_sample_size 1000 --data_variable_size 9
+```
+
+## Getting results 
+
 
 ## Cite
 
