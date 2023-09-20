@@ -17,19 +17,19 @@ To run the baseline experiments for DAG-GNN on the synthetic experiments, run th
 ### Sangiovese Grapes Dataset
 
 ```bash
-python train.py --data_type real --data_filename grapes/grapes_data_clean.csv --data_sample_size 100000 --data_variable_size 14 
+python train.py --data_type real --filename grapes/grapes_data_clean.csv --data_sample_size 100000 --data_variable_size 14 
 ```
 
 ### Arctic Sea Ice Dataset
 
 ```bash
-python train.py --data_type real --data_filename arctic/arctic_data_clean.csv --data_sample_size 468 --data_variable_size 12
+python train.py --data_type real --filename arctic/arctic_data_clean.csv --data_sample_size 468 --data_variable_size 12
 ```
 
 ### Alzheimer's Disease Dataset
 
 ```bash
-python train.py --data_type real --data_filename alzheimers/alzheimers_data_clean.csv --data_sample_size 1000 --data_variable_size 9
+python train.py --data_type real --filename alzheimers/alzheimers_data_clean.csv --data_sample_size 1000 --data_variable_size 9
 ```
 
 ## Getting results 
